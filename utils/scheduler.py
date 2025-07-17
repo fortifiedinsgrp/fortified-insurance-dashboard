@@ -5,9 +5,9 @@ Scheduling module for automated report generation and delivery
 import json
 import os
 import smtplib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Callable
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 # Import email modules with fallback
 import email.message
 import base64
@@ -18,52 +18,110 @@ from .settings import settings_manager, UserInfo
 
 @dataclass
 class ScheduledReport:
-    """Scheduled report configuration"""
+    """Represents a scheduled report configuration"""
     id: str
     name: str
-    report_type: str  # 'daily', 'weekly', 'monthly', 'custom'
-    frequency: str  # 'daily', 'weekly', 'monthly'
-    recipients: List[str]  # Email addresses
-    parameters: Dict  # Report-specific parameters
+    report_type: str  # daily_performance, weekly_aggregated, monthly_comprehensive, etc.
+    frequency: str    # daily, weekly, monthly
+    time: str        # HH:MM format
+    recipients: List[str]
     enabled: bool = True
-    last_run: Optional[str] = None
     next_run: Optional[str] = None
-    created_at: Optional[str] = None
+    created_by: Optional[str] = None  # User who created the report
+    user_role: Optional[str] = None   # agency_owner, management, admin
+    agency_filter: Optional[str] = None  # Specific agency for agency_owner role
+    include_campaigns: bool = True    # Whether to include campaign data (management only)
     
     def __post_init__(self):
-        if self.created_at is None:
-            self.created_at = datetime.now().isoformat()
         if self.next_run is None:
             self._calculate_next_run()
     
     def _calculate_next_run(self):
-        """Calculate next run time based on frequency"""
+        """Calculate the next run time based on frequency"""
+        from datetime import datetime, timedelta
+        
         now = datetime.now()
         
+        # Parse the time
+        try:
+            hour, minute = map(int, self.time.split(':'))
+        except:
+            hour, minute = 8, 0  # Default to 8 AM
+        
         if self.frequency == 'daily':
-            # Run at 8 AM next day
-            next_run = now.replace(hour=8, minute=0, second=0, microsecond=0)
+            # Schedule for tomorrow at specified time
+            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if next_run <= now:
                 next_run += timedelta(days=1)
+        
         elif self.frequency == 'weekly':
-            # Run on Monday at 8 AM
-            days_ahead = 0 - now.weekday()  # Monday is 0
-            if days_ahead <= 0:  # Target day already happened this week
-                days_ahead += 7
-            next_run = now + timedelta(days=days_ahead)
-            next_run = next_run.replace(hour=8, minute=0, second=0, microsecond=0)
+            # Schedule for next Monday at specified time
+            days_until_monday = (7 - now.weekday()) % 7
+            if days_until_monday == 0:  # Today is Monday
+                days_until_monday = 7   # Schedule for next Monday
+            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            next_run += timedelta(days=days_until_monday)
+        
         elif self.frequency == 'monthly':
-            # Run on 1st of next month at 8 AM
+            # Schedule for first day of next month
             if now.month == 12:
-                next_run = now.replace(year=now.year + 1, month=1, day=1, hour=8, minute=0, second=0, microsecond=0)
+                next_run = now.replace(year=now.year+1, month=1, day=1, hour=hour, minute=minute, second=0, microsecond=0)
             else:
-                next_run = now.replace(month=now.month + 1, day=1, hour=8, minute=0, second=0, microsecond=0)
+                next_run = now.replace(month=now.month+1, day=1, hour=hour, minute=minute, second=0, microsecond=0)
+        
         else:
             # Default to daily
-            next_run = now + timedelta(days=1)
-            next_run = next_run.replace(hour=8, minute=0, second=0, microsecond=0)
+            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=1)
         
         self.next_run = next_run.isoformat()
+    
+    def get_report_date_range(self):
+        """Calculate the appropriate date range for this report based on frequency"""
+        from datetime import date, timedelta
+        
+        today = date.today()
+        
+        if self.frequency == 'daily':
+            # Yesterday's data
+            target_date = today - timedelta(days=1)
+            return target_date, target_date
+        
+        elif self.frequency == 'weekly':
+            # Previous week (Sunday through Saturday)
+            # Find last Sunday
+            days_since_sunday = (today.weekday() + 1) % 7  # Monday=0, Sunday=6 -> Sunday=0
+            last_sunday = today - timedelta(days=days_since_sunday + 7)  # Previous week's Sunday
+            last_saturday = last_sunday + timedelta(days=6)
+            return last_sunday, last_saturday
+        
+        elif self.frequency == 'monthly':
+            # Previous month
+            first_of_this_month = today.replace(day=1)
+            last_day_prev_month = first_of_this_month - timedelta(days=1)
+            first_of_prev_month = last_day_prev_month.replace(day=1)
+            return first_of_prev_month, last_day_prev_month
+        
+        else:
+            # Default to yesterday
+            target_date = today - timedelta(days=1)
+            return target_date, target_date
+    
+    def get_report_parameters(self):
+        """Get the parameters to pass to the report generator"""
+        start_date, end_date = self.get_report_date_range()
+        
+        params = {
+            'start_date': start_date,
+            'end_date': end_date,
+            'user_role': self.user_role,
+            'include_campaigns': self.include_campaigns
+        }
+        
+        # Add agency filter for agency owners
+        if self.user_role == 'agency_owner' and self.agency_filter:
+            params['agency'] = self.agency_filter
+        
+        return params
 
 class EmailService:
     """Email service for sending reports"""
@@ -180,21 +238,24 @@ class ReportScheduler:
         self.report_generators[report_type] = generator_func
     
     def add_scheduled_report(self, name: str, report_type: str, frequency: str,
-                           recipients: List[str], parameters: Optional[Dict] = None) -> str:
+                           recipients: List[str], time: str = "08:00", 
+                           user_role: str = "management", agency_filter: Optional[str] = None,
+                           include_campaigns: bool = True) -> str:
         """Add a new scheduled report"""
         import uuid
         
         report_id = str(uuid.uuid4())
-        if parameters is None:
-            parameters = {}
         
         report = ScheduledReport(
             id=report_id,
             name=name,
             report_type=report_type,
             frequency=frequency,
+            time=time,
             recipients=recipients,
-            parameters=parameters
+            user_role=user_role,
+            agency_filter=agency_filter,
+            include_campaigns=include_campaigns
         )
         
         self.scheduled_reports.append(report)
@@ -209,8 +270,8 @@ class ReportScheduler:
                     if hasattr(report, key):
                         setattr(report, key, value)
                 
-                # Recalculate next run if frequency changed
-                if 'frequency' in kwargs:
+                # Recalculate next run if frequency or time changed
+                if 'frequency' in kwargs or 'time' in kwargs:
                     report._calculate_next_run()
                 
                 return self.save_schedules()
@@ -252,14 +313,13 @@ class ReportScheduler:
             
             # Generate report
             generator_func = self.report_generators[report.report_type]
-            report_data = generator_func(**report.parameters)
+            report_data = generator_func(**report.get_report_parameters())
             
             # Send report
             success = self.email_service.send_report(report, report_data)
             
             if success:
-                # Update last run and calculate next run
-                report.last_run = datetime.now().isoformat()
+                # Calculate next run for the next occurrence
                 report._calculate_next_run()
                 self.save_schedules()
                 print(f"Report '{report.name}' sent successfully")

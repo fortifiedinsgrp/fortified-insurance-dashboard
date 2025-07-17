@@ -4,31 +4,19 @@ Reports page for ad hoc report generation and scheduling
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
-import sys
-import os
+from datetime import datetime, date, timedelta
+from typing import Dict, List
 
 # Add the parent directory to sys.path to import utils
+import sys
+import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.settings import settings_manager
+from utils.google_sheets import get_sheet_data
+from utils.reports import ReportGenerator
+from utils.calculations import get_weekly_summary
 from utils.scheduler import report_scheduler
-from utils.reports import report_generator
-try:
-    from utils.google_sheets import get_sheet_data
-except ImportError:
-    # Fallback if google_sheets module doesn't exist
-    try:
-        from utils.google_sheets_fallback import get_sheet_data_with_fallback as get_sheet_data
-    except ImportError:
-        def get_sheet_data(sheet_name):
-            import pandas as pd
-            return pd.DataFrame()
-from utils.calculations import (
-    aggregate_agency_stats,
-    get_weekly_summary,
-    get_monthly_summary
-)
+from utils.settings import settings_manager
 
 def main():
     st.set_page_config(page_title="Reports", page_icon="📋", layout="wide")
@@ -359,18 +347,68 @@ def main():
         st.subheader("Schedule New Report")
         
         with st.form("schedule_report_form"):
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                schedule_name = st.text_input("Report Name", placeholder="Weekly Performance Report")
+                schedule_name = st.text_input("Report Name", placeholder="Daily Agency Report")
                 schedule_type = st.selectbox(
                     "Report Type",
-                    options=["daily", "weekly", "monthly", "agent_performance", "campaign_analysis", "executive_summary"],
+                    options=["daily_performance", "weekly_aggregated", "monthly_comprehensive", "agent_performance", "campaign_analysis", "executive_summary"],
                     format_func=lambda x: x.replace('_', ' ').title()
                 )
                 frequency = st.selectbox("Frequency", options=["daily", "weekly", "monthly"])
+                
+                # Time selection
+                report_time = st.time_input(
+                    "Report Time",
+                    value=datetime.time(8, 0),
+                    help="When to send the report (your local time)"
+                )
             
             with col2:
+                # User role selection
+                user_role = st.selectbox(
+                    "User Role",
+                    options=["agency_owner", "management", "admin"],
+                    format_func=lambda x: x.replace('_', ' ').title(),
+                    help="Determines data access level"
+                )
+                
+                # Agency filter for agency owners
+                agency_filter = None
+                if user_role == "agency_owner":
+                    # Get available agencies from the data
+                    try:
+                        agency_data = get_sheet_data('Daily Agency Stats')
+                        if not agency_data.empty and 'Agency' in agency_data.columns:
+                            agencies = sorted(agency_data['Agency'].dropna().unique())
+                            agency_filter = st.selectbox(
+                                "Agency",
+                                options=agencies,
+                                help="Select the specific agency for this report"
+                            )
+                        else:
+                            agency_filter = st.text_input(
+                                "Agency Name",
+                                help="Enter the agency name for filtering"
+                            )
+                    except:
+                        agency_filter = st.text_input(
+                            "Agency Name",
+                            help="Enter the agency name for filtering"
+                        )
+                else:
+                    st.info("Management and Admin users see all agencies")
+                
+                # Campaign data inclusion
+                include_campaigns = st.checkbox(
+                    "Include Campaign Data",
+                    value=(user_role in ["management", "admin"]),
+                    disabled=(user_role == "agency_owner"),
+                    help="Campaign data only available for Management and Admin roles"
+                )
+            
+            with col3:
                 # Get available email addresses
                 agency_owners = settings_manager.get_agency_owners()
                 management_team = settings_manager.get_management_team()
@@ -389,16 +427,27 @@ def main():
                     selected_emails = []
                 
                 enabled = st.checkbox("Enable Report", value=True)
+                
+                # Show preview of report schedule
+                if frequency == "daily" and report_time:
+                    st.info(f"📅 Will run daily at {report_time.strftime('%H:%M')} with yesterday's data")
+                elif frequency == "weekly" and report_time:
+                    st.info(f"📅 Will run weekly on Mondays at {report_time.strftime('%H:%M')} with previous week's data (Sun-Sat)")
+                elif frequency == "monthly" and report_time:
+                    st.info(f"📅 Will run monthly on the 1st at {report_time.strftime('%H:%M')} with previous month's data")
             
             submitted = st.form_submit_button("Schedule Report")
             
-            if submitted and schedule_name and selected_emails:
+            if submitted and schedule_name and selected_emails and schedule_type and frequency and report_time:
                 report_id = report_scheduler.add_scheduled_report(
                     name=schedule_name,
                     report_type=schedule_type,
                     frequency=frequency,
+                    time=report_time.strftime('%H:%M'),
                     recipients=selected_emails,
-                    parameters={}
+                    user_role=user_role,
+                    agency_filter=agency_filter,
+                    include_campaigns=include_campaigns
                 )
                 st.success(f"Report scheduled successfully! ID: {report_id}")
                 st.rerun()

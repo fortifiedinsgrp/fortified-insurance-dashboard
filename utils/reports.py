@@ -3,7 +3,7 @@ Report generation module for creating different types of reports
 """
 
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional
 import plotly.graph_objects as go
 import plotly.express as px
@@ -169,11 +169,23 @@ class ReportGenerator:
             start_date = kwargs.get('start_date')
             end_date = kwargs.get('end_date')
             agency = kwargs.get('agency')
+            user_role = kwargs.get('user_role', 'management')
+            include_campaigns = kwargs.get('include_campaigns', True)
+            
+            # For scheduled reports, use automatic date calculation
+            if start_date is None and end_date is None:
+                from datetime import date, timedelta
+                yesterday = date.today() - timedelta(days=1)
+                start_date = end_date = yesterday
             
             # Load data (using correct sheet names) 
             agency_data = self._load_filtered_data('Daily Agency Stats', start_date, end_date, agency)
             agent_data = self._load_filtered_data('Daily Agent Totals', start_date, end_date, agency)
-            vendor_data = self._load_filtered_data('Daily Lead Vendor Totals', start_date, end_date, agency)
+            
+            # Load campaign data only if user has permission
+            vendor_data = pd.DataFrame()
+            if include_campaigns and user_role in ['management', 'admin']:
+                vendor_data = self._load_filtered_data('Daily Lead Vendor Totals', start_date, end_date, agency)
             
             # Calculate metrics
             stats = aggregate_agency_stats(agency_data, agent_data, vendor_data)
@@ -189,10 +201,17 @@ class ReportGenerator:
             agency_info = f" - {agency}" if agency else ""
             date_range = f"{report_date}" if start_date == end_date else f"{start_date} to {end_date}"
             
+            # Role-specific report title
+            role_suffix = ""
+            if user_role == 'agency_owner':
+                role_suffix = " (Agency Report)"
+            elif user_role == 'management':
+                role_suffix = " (Management Report)"
+            
             # Format report
             report_html = f"""
             <div style="font-family: Arial, sans-serif;">
-                <h1>Daily Performance Report{agency_info}</h1>
+                <h1>Daily Performance Report{agency_info}{role_suffix}</h1>
                 <p><strong>Date:</strong> {date_range}</p>
                 
                 <h2>Key Metrics</h2>
@@ -230,15 +249,26 @@ class ReportGenerator:
                 <h2>Top Performing Agents</h2>
                 {self._format_agent_table(top_agents)}
                 
-                <h2>At-Risk Agents ({len(at_risk_agents)})</h2>
-                {self._format_agent_table(at_risk_agents) if len(at_risk_agents) > 0 else '<p>No agents at risk.</p>'}
+                <h2>At-Risk Agents</h2>
+                {self._format_agent_table(at_risk_agents)}
+            """
+            
+            # Add campaign analysis for management/admin users
+            if include_campaigns and user_role in ['management', 'admin'] and not vendor_data.empty:
+                campaign_performance = get_campaign_performance(vendor_data)
+                report_html += f"""
+                <h2>Campaign Performance</h2>
+                {self._format_campaign_table(campaign_performance)}
+                """
+            
+            report_html += """
             </div>
             """
             
             return report_html
             
         except Exception as e:
-            return f"<p>Error generating daily report: {e}</p>"
+            return f"<div>Error generating daily report: {str(e)}</div>"
     
     def generate_weekly_report(self, **kwargs) -> str:
         """Generate weekly aggregated report"""
@@ -247,67 +277,121 @@ class ReportGenerator:
             start_date = kwargs.get('start_date')
             end_date = kwargs.get('end_date')
             agency = kwargs.get('agency')
+            user_role = kwargs.get('user_role', 'management')
+            include_campaigns = kwargs.get('include_campaigns', True)
             
-            # Load data (using correct sheet names)
+            # For scheduled reports, use automatic date calculation (previous week Sunday-Saturday)
+            if start_date is None and end_date is None:
+                from datetime import date, timedelta
+                today = date.today()
+                days_since_sunday = (today.weekday() + 1) % 7  # Monday=0, Sunday=6 -> Sunday=0
+                last_sunday = today - timedelta(days=days_since_sunday + 7)  # Previous week's Sunday
+                last_saturday = last_sunday + timedelta(days=6)
+                start_date, end_date = last_sunday, last_saturday
+            
+            # Load and aggregate data
             agency_data = self._load_filtered_data('Daily Agency Stats', start_date, end_date, agency)
             agent_data = self._load_filtered_data('Daily Agent Totals', start_date, end_date, agency)
-            vendor_data = self._load_filtered_data('Daily Lead Vendor Totals', start_date, end_date, agency)
             
-            # Try to get weekly data if date column exists
-            weekly_data = None
+            # Load campaign data only if user has permission
+            vendor_data = pd.DataFrame()
+            if include_campaigns and user_role in ['management', 'admin']:
+                vendor_data = self._load_filtered_data('Daily Lead Vendor Totals', start_date, end_date, agency)
+            
+            # Get weekly summaries (data should already be aggregated by _load_filtered_data)
             if not agency_data.empty and 'Date' in agency_data.columns:
-                # Filter to last 7 days
-                agency_data['Date'] = pd.to_datetime(agency_data['Date'])
-                last_week = datetime.now() - timedelta(days=7)
-                recent_data = agency_data[agency_data['Date'] >= last_week]
-                weekly_data = get_weekly_summary(recent_data)
+                agency_weekly = get_weekly_summary(agency_data)
+            else:
+                agency_weekly = agency_data
+                
+            if not agent_data.empty and 'Date' in agent_data.columns:
+                agent_weekly = get_weekly_summary(agent_data)
+            else:
+                agent_weekly = agent_data
+                
+            vendor_weekly = pd.DataFrame()
+            if not vendor_data.empty and 'Date' in vendor_data.columns:
+                vendor_weekly = get_weekly_summary(vendor_data)
+            elif not vendor_data.empty:
+                vendor_weekly = vendor_data
             
             # Calculate metrics
-            stats = aggregate_agency_stats(agency_data, agent_data, vendor_data)
-            top_agents = get_top_performers(agent_data, n=10)
-            campaign_performance = get_campaign_performance(vendor_data)
+            stats = aggregate_agency_stats(agency_weekly, agent_weekly, vendor_weekly)
+            top_agents = get_top_performers(agent_weekly, n=10)
             
+            # Format date range
+            if start_date and end_date:
+                date_range = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+            else:
+                date_range = "Previous Week"
+            
+            agency_info = f" - {agency}" if agency else ""
+            
+            # Role-specific report title
+            role_suffix = ""
+            if user_role == 'agency_owner':
+                role_suffix = " (Agency Report)"
+            elif user_role == 'management':
+                role_suffix = " (Management Report)"
+            
+            # Format report
             report_html = f"""
             <div style="font-family: Arial, sans-serif;">
-                <h1>Weekly Performance Report</h1>
-                <p><strong>Week Ending:</strong> {datetime.now().strftime('%Y-%m-%d')}</p>
+                <h1>Weekly Aggregated Report{agency_info}{role_suffix}</h1>
+                <p><strong>Period:</strong> {date_range}</p>
                 
                 <h2>Weekly Summary</h2>
                 <table style="border-collapse: collapse; width: 100%;">
                     <tr style="background-color: #f2f2f2;">
                         <th style="border: 1px solid #ddd; padding: 8px;">Metric</th>
-                        <th style="border: 1px solid #ddd; padding: 8px;">Value</th>
+                        <th style="border: 1px solid #ddd; padding: 8px;">Total</th>
                     </tr>
                     <tr>
                         <td style="border: 1px solid #ddd; padding: 8px;">Total Revenue</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">${stats['totalRevenue']:,.2f}</td>
                     </tr>
                     <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px;">Total Lead Spend</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${stats['totalLeadSpend']:,.2f}</td>
+                    </tr>
+                    <tr>
                         <td style="border: 1px solid #ddd; padding: 8px;">Total Profit</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">${stats['totalProfit']:,.2f}</td>
                     </tr>
                     <tr>
-                        <td style="border: 1px solid #ddd; padding: 8px;">Average ROAS</td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">{stats['avgROAS']:.2f}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">Total Leads</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">{stats['totalLeads']:,}</td>
                     </tr>
                     <tr>
-                        <td style="border: 1px solid #ddd; padding: 8px;">Active Agents</td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">{stats['totalAgents']}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">Total Sales</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">{stats['totalSales']:,}</td>
+                    </tr>
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px;">Average Closing Ratio</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">{stats['avgClosingRatio']:.2f}%</td>
                     </tr>
                 </table>
                 
-                <h2>Top 10 Agents This Week</h2>
+                <h2>Top Performing Agents (Week)</h2>
                 {self._format_agent_table(top_agents)}
-                
-                <h2>Campaign Performance</h2>
+            """
+            
+            # Add campaign analysis for management/admin users
+            if include_campaigns and user_role in ['management', 'admin'] and not vendor_weekly.empty:
+                campaign_performance = get_campaign_performance(vendor_weekly)
+                report_html += f"""
+                <h2>Campaign Performance (Week)</h2>
                 {self._format_campaign_table(campaign_performance)}
+                """
+            
+            report_html += """
             </div>
             """
             
             return report_html
             
         except Exception as e:
-            return f"<p>Error generating weekly report: {e}</p>"
+            return f"<div>Error generating weekly report: {str(e)}</div>"
     
     def generate_monthly_report(self, **kwargs) -> str:
         """Generate monthly comprehensive report"""
