@@ -4,7 +4,7 @@ Reports page for ad hoc report generation and scheduling
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time
 from typing import Dict, List
 
 # Add the parent directory to sys.path to import utils
@@ -361,7 +361,7 @@ def main():
                 # Time selection
                 report_time = st.time_input(
                     "Report Time",
-                    value=datetime.time(8, 0),
+                    value=time(8, 0),
                     help="When to send the report (your local time)"
                 )
             
