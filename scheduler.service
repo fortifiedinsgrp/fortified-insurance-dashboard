@@ -1,0 +1,15 @@
+[Unit]
+Description=Fortified Insurance Report Scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/fortified-insurance-dashboard
+Environment=PATH=/path/to/fortified-insurance-dashboard/venv/bin
+ExecStart=/path/to/fortified-insurance-dashboard/venv/bin/python standalone_scheduler.py --daemon
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 
