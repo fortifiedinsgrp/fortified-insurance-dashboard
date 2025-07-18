@@ -25,45 +25,67 @@ jobs:
         pip install -r requirements.txt
         
     - name: Create secrets file
+      env:
+        SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+        GCP_TYPE: ${{ secrets.GCP_TYPE }}
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        GCP_PRIVATE_KEY_ID: ${{ secrets.GCP_PRIVATE_KEY_ID }}
+        GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
+        GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
+        GCP_CLIENT_ID: ${{ secrets.GCP_CLIENT_ID }}
+        GCP_AUTH_URI: ${{ secrets.GCP_AUTH_URI }}
+        GCP_TOKEN_URI: ${{ secrets.GCP_TOKEN_URI }}
+        GCP_AUTH_PROVIDER_X509_CERT_URL: ${{ secrets.GCP_AUTH_PROVIDER_X509_CERT_URL }}
+        GCP_CLIENT_X509_CERT_URL: ${{ secrets.GCP_CLIENT_X509_CERT_URL }}
       run: |
         mkdir -p .streamlit
-        cat > .streamlit/secrets.toml << EOF
-        SPREADSHEET_ID = "${{ secrets.SPREADSHEET_ID }}"
+        echo "Creating secrets.toml..."
+        cat > .streamlit/secrets.toml << 'EOF'
+        SPREADSHEET_ID = "$SPREADSHEET_ID"
         
         [gcp_service_account]
-        type = "${{ secrets.GCP_TYPE }}"
-        project_id = "${{ secrets.GCP_PROJECT_ID }}"
-        private_key_id = "${{ secrets.GCP_PRIVATE_KEY_ID }}"
-        private_key = """${{ secrets.GCP_PRIVATE_KEY }}"""
-        client_email = "${{ secrets.GCP_CLIENT_EMAIL }}"
-        client_id = "${{ secrets.GCP_CLIENT_ID }}"
-        auth_uri = "${{ secrets.GCP_AUTH_URI }}"
-        token_uri = "${{ secrets.GCP_TOKEN_URI }}"
-        auth_provider_x509_cert_url = "${{ secrets.GCP_AUTH_PROVIDER_X509_CERT_URL }}"
-        client_x509_cert_url = "${{ secrets.GCP_CLIENT_X509_CERT_URL }}"
+        type = "$GCP_TYPE"
+        project_id = "$GCP_PROJECT_ID"
+        private_key_id = "$GCP_PRIVATE_KEY_ID"
+        private_key = """$GCP_PRIVATE_KEY"""
+        client_email = "$GCP_CLIENT_EMAIL"
+        client_id = "$GCP_CLIENT_ID"
+        auth_uri = "$GCP_AUTH_URI"
+        token_uri = "$GCP_TOKEN_URI"
+        auth_provider_x509_cert_url = "$GCP_AUTH_PROVIDER_X509_CERT_URL"
+        client_x509_cert_url = "$GCP_CLIENT_X509_CERT_URL"
         universe_domain = "googleapis.com"
         EOF
+        echo "✅ Secrets file created successfully"
         
     - name: Configure email settings
+      env:
+        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT }}
+        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        SENDER_NAME: ${{ secrets.SENDER_NAME }}
       run: |
-        python << EOF
+        python << 'EOF'
         import json
         import os
         
-        # Create email settings for the scheduler
+        # Create email settings for the scheduler using environment variables
         settings = {
             "email_settings": {
-                "smtp_server": "${{ secrets.SMTP_SERVER }}",
-                "smtp_port": ${{ secrets.SMTP_PORT }},
+                "smtp_server": os.environ.get('SMTP_SERVER', 'smtp.gmail.com'),
+                "smtp_port": int(os.environ.get('SMTP_PORT', '587')),
                 "use_tls": True,
-                "sender_email": "${{ secrets.SENDER_EMAIL }}",
-                "sender_password": "${{ secrets.SMTP_PASSWORD }}",
-                "sender_name": "${{ secrets.SENDER_NAME }}"
+                "sender_email": os.environ.get('SENDER_EMAIL', ''),
+                "sender_password": os.environ.get('SMTP_PASSWORD', ''),
+                "sender_name": os.environ.get('SENDER_NAME', 'Fortified Insurance Reports')
             }
         }
         
         with open('settings.json', 'w') as f:
             json.dump(settings, f, indent=2)
+        
+        print("✅ Email settings configured successfully")
         EOF
         
     - name: Check for due reports and send
