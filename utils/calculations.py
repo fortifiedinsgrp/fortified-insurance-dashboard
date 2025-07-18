@@ -48,7 +48,8 @@ def calculate_agent_profitability(df: pd.DataFrame) -> pd.DataFrame:
             if col in result.columns:
                 # Convert to numeric and fill NaN values
                 result[col] = pd.to_numeric(result[col], errors='coerce')
-                result.loc[:, col] = result[col].fillna(0)
+                if isinstance(result[col], pd.Series):
+                    result.loc[:, col] = result[col].fillna(0)
         
         # Rename columns for consistency with the dashboard
         result.rename(columns={
@@ -83,12 +84,16 @@ def calculate_agent_profitability(df: pd.DataFrame) -> pd.DataFrame:
                 if result[col].dtype == 'object':
                     result[col] = result[col].astype(str).str.replace(',', '').str.replace('$', '')
                 numeric_series = pd.to_numeric(result[col], errors='coerce')
-                result[col] = numeric_series.fillna(0)
+                if isinstance(numeric_series, pd.Series):
+                    result[col] = numeric_series.fillna(0)
         
         # Calculate closing ratio (sales / paid calls * 100)
         if 'totalSales' in result.columns and 'paidCalls' in result.columns:
-            result['closingRatio'] = safe_divide(result['totalSales'], result['paidCalls']) * 100
-            result['closingRatio'] = result['closingRatio'].round(2)
+            total_sales = result['totalSales'] if isinstance(result['totalSales'], pd.Series) else pd.Series([result['totalSales']])
+            paid_calls = result['paidCalls'] if isinstance(result['paidCalls'], pd.Series) else pd.Series([result['paidCalls']])
+            result['closingRatio'] = safe_divide(total_sales, paid_calls) * 100
+            if isinstance(result['closingRatio'], pd.Series):
+                result['closingRatio'] = result['closingRatio'].round(2)
         
         # Calculate agent profitability only if lead spend is available in the data
         if 'revenue' in result.columns and 'leadSpend' in result.columns:
@@ -104,7 +109,13 @@ def calculate_agent_profitability(df: pd.DataFrame) -> pd.DataFrame:
     
     # Calculate revenue per call if not present
     if 'revenue' in result.columns and 'paidCalls' in result.columns and 'revenuePerCall' not in result.columns:
-        result['revenuePerCall'] = safe_divide(result['revenue'], result['paidCalls']).round(2)
+        revenue = result['revenue'] if isinstance(result['revenue'], pd.Series) else pd.Series([result['revenue']])
+        paid_calls = result['paidCalls'] if isinstance(result['paidCalls'], pd.Series) else pd.Series([result['paidCalls']])
+        rev_per_call = safe_divide(revenue, paid_calls)
+        if isinstance(rev_per_call, pd.Series):
+            result['revenuePerCall'] = rev_per_call.round(2)
+        else:
+            result['revenuePerCall'] = round(rev_per_call, 2)
     
     return result
 

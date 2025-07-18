@@ -3,6 +3,7 @@ Reports page for ad hoc report generation and scheduling
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, date, timedelta, time
 from typing import Dict, List
@@ -17,6 +18,9 @@ from utils.reports import ReportGenerator
 from utils.calculations import get_weekly_summary
 from utils.scheduler import report_scheduler
 from utils.settings import settings_manager
+
+# Initialize report generator
+report_generator = ReportGenerator()
 
 def main():
     st.set_page_config(page_title="Reports", page_icon="📋", layout="wide")
@@ -119,7 +123,7 @@ def main():
         # Show selected parameters
         st.markdown("---")
         st.markdown("**📋 Report Parameters:**")
-        st.write(f"**Type:** {report_type.replace('_', ' ').title()}")
+        st.write(f"**Type:** {report_type.replace('_', ' ').title() if report_type else 'None Selected'}")
         st.write(f"**Date Range:** {start_date} to {end_date}")
         st.write(f"**Agency:** {selected_agency}")
         
@@ -133,7 +137,8 @@ def main():
         st.header("Generated Report")
         
         if generate_report:
-            with st.spinner(f"Generating {report_type.replace('_', ' ').title()} report..."):
+            report_title = report_type.replace('_', ' ').title() if report_type else 'Unknown'
+            with st.spinner(f"Generating {report_title} report..."):
                 try:
                     # Generate the report with date and agency filtering
                     if report_type:
@@ -143,11 +148,11 @@ def main():
                             end_date=end_date,
                             agency=selected_agency if selected_agency != "All Agencies" else None
                         )
+                        
+                        # Display the report
+                        components.html(report_html, height=800, scrolling=True)
                     else:
                         st.error("Please select a report type")
-                    
-                    # Display the report
-                    st.components.v1.html(report_html, height=800, scrolling=True)
                     
                     # Option to download report
                     col1, col2 = st.columns([1, 4])
@@ -457,36 +462,57 @@ def main():
         
         if report_scheduler.scheduled_reports:
             for report in report_scheduler.scheduled_reports:
-                with st.expander(f"📊 {report.name} ({report.frequency})"):
-                    col1, col2, col3 = st.columns([2, 2, 1])
+                try:
+                    # Safe access to report attributes with error handling
+                    report_name = getattr(report, 'name', 'Unknown Report')
+                    report_frequency = getattr(report, 'frequency', 'unknown')
+                    report_type = getattr(report, 'report_type', 'unknown')
+                    recipients = getattr(report, 'recipients', [])
+                    enabled = getattr(report, 'enabled', True)
+                    next_run = getattr(report, 'next_run', None)
+                    report_id = getattr(report, 'id', f'report_{hash(str(report))}')
                     
-                    with col1:
-                        st.write(f"**Type:** {report.report_type.replace('_', ' ').title()}")
-                        st.write(f"**Recipients:** {', '.join(report.recipients)}")
-                        st.write(f"**Status:** {'✅ Enabled' if report.enabled else '❌ Disabled'}")
-                    
-                    with col2:
-                        if report.last_run:
-                            last_run = datetime.fromisoformat(report.last_run)
-                            st.write(f"**Last Run:** {last_run.strftime('%Y-%m-%d %H:%M')}")
-                        else:
-                            st.write("**Last Run:** Never")
+                    with st.expander(f"📊 {report_name} ({report_frequency})"):
+                        col1, col2, col3 = st.columns([2, 2, 1])
                         
-                        if report.next_run:
-                            next_run = datetime.fromisoformat(report.next_run)
-                            st.write(f"**Next Run:** {next_run.strftime('%Y-%m-%d %H:%M')}")
-                    
-                    with col3:
-                        if st.button(f"🗑️ Delete", key=f"delete_{report.id}"):
-                            if report_scheduler.remove_scheduled_report(report.id):
-                                st.success("Report deleted!")
-                                st.rerun()
+                        with col1:
+                            st.write(f"**Type:** {report_type.replace('_', ' ').title()}")
+                            st.write(f"**Recipients:** {', '.join(recipients) if recipients else 'None'}")
+                            st.write(f"**Status:** {'✅ Enabled' if enabled else '❌ Disabled'}")
                         
-                        enable_disable = "Disable" if report.enabled else "Enable"
-                        if st.button(f"⚡ {enable_disable}", key=f"toggle_{report.id}"):
-                            if report_scheduler.update_scheduled_report(report.id, enabled=not report.enabled):
-                                st.success(f"Report {enable_disable.lower()}d!")
-                                st.rerun()
+                        with col2:
+                            # Safe handling of last_run - check if it exists but don't fail if it doesn't
+                            try:
+                                if hasattr(report, 'last_run') and getattr(report, 'last_run', None):
+                                    last_run = datetime.fromisoformat(report.last_run)
+                                    st.write(f"**Last Run:** {last_run.strftime('%Y-%m-%d %H:%M')}")
+                                else:
+                                    st.write("**Last Run:** Not yet executed")
+                            except:
+                                st.write("**Last Run:** Not yet executed")
+                            
+                            if next_run:
+                                try:
+                                    next_run_dt = datetime.fromisoformat(next_run)
+                                    st.write(f"**Next Run:** {next_run_dt.strftime('%Y-%m-%d %H:%M')}")
+                                except:
+                                    st.write(f"**Next Run:** {next_run}")
+                        
+                        with col3:
+                            if st.button(f"🗑️ Delete", key=f"delete_{report_id}"):
+                                if report_scheduler.remove_scheduled_report(report_id):
+                                    st.success("Report deleted!")
+                                    st.rerun()
+                            
+                            enable_disable = "Disable" if enabled else "Enable"
+                            if st.button(f"⚡ {enable_disable}", key=f"toggle_{report_id}"):
+                                if report_scheduler.update_scheduled_report(report_id, enabled=not enabled):
+                                    st.success(f"Report {enable_disable.lower()}d!")
+                                    st.rerun()
+                
+                except Exception as e:
+                    st.error(f"Error displaying report: {str(e)}")
+                    st.write("Report data might be corrupted. Consider deleting and recreating.")
         else:
             st.info("No reports scheduled yet.")
     
@@ -626,8 +652,8 @@ def show_email_dialog(report_html, report_type):
                     name=custom_subject or f"{report_type.replace('_', ' ').title()} Report",
                     report_type=report_type,
                     frequency="manual",
-                    recipients=recipients,
-                    parameters={}
+                    time="08:00",
+                    recipients=recipients
                 )
                 
                 success = report_scheduler.email_service.send_report(mock_report, report_html)
