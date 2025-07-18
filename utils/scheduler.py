@@ -218,8 +218,9 @@ class ReportScheduler:
                 print(f"Error loading schedules: {e}")
     
     def save_schedules(self):
-        """Save scheduled reports to JSON file"""
+        """Save scheduled reports to JSON file and sync to GitHub"""
         try:
+            # Save locally first
             data = {
                 'scheduled_reports': [asdict(report) for report in self.scheduled_reports],
                 'last_updated': datetime.now().isoformat()
@@ -227,6 +228,25 @@ class ReportScheduler:
             
             with open(self.schedules_file, 'w') as f:
                 json.dump(data, f, indent=2)
+            
+            # Sync to GitHub if running in Streamlit
+            try:
+                import streamlit as st
+                from .github_sync import github_sync
+                
+                if github_sync.is_configured():
+                    github_sync.update_scheduled_reports(
+                        self.scheduled_reports,
+                        "Auto-sync: Update scheduled reports from Streamlit interface"
+                    )
+                    print("✅ Synced scheduled reports to GitHub")
+                else:
+                    print("ℹ️  GitHub sync not configured (this is normal for local/GitHub Actions)")
+            except ImportError:
+                # Not running in Streamlit environment
+                print("ℹ️  Not syncing to GitHub (not in Streamlit environment)")
+            except Exception as e:
+                print(f"⚠️  Failed to sync to GitHub: {e}")
             
             return True
         except Exception as e:

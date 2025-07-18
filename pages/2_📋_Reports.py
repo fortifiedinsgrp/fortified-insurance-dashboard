@@ -319,6 +319,37 @@ def main():
     with tab3:
         st.header("Report Scheduling")
         
+        # GitHub Sync Status
+        try:
+            from utils.github_sync import github_sync
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if github_sync.is_configured():
+                    is_connected, message = github_sync.test_connection()
+                    if is_connected:
+                        st.success(f"🔗 GitHub Sync: Connected - {message}")
+                    else:
+                        st.error(f"❌ GitHub Sync: {message}")
+                else:
+                    st.warning("⚠️ GitHub Sync: Not configured. Scheduled reports won't sync between Streamlit and GitHub Actions.")
+                    st.info("📖 See GITHUB_TOKEN_SETUP.md for setup instructions")
+            
+            with col2:
+                if st.button("🔄 Test GitHub Connection"):
+                    if github_sync.is_configured():
+                        is_connected, message = github_sync.test_connection()
+                        if is_connected:
+                            st.success("✅ Connection successful!")
+                        else:
+                            st.error(f"❌ {message}")
+                    else:
+                        st.error("❌ GitHub token not configured")
+        except Exception as e:
+            st.error(f"Error checking GitHub sync: {e}")
+        
+        st.divider()
+        
         # Scheduler status
         scheduler_summary = report_scheduler.get_schedule_summary()
         
