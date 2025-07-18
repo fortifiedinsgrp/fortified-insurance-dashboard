@@ -1,10 +1,10 @@
-name: Send Daily Reports
+name: Daily Report Scheduler
 
 on:
   schedule:
-    # Run at 8 AM UTC daily (adjust timezone as needed)
+    # Run at 8:00 AM UTC daily (adjust timezone as needed)
     - cron: '0 8 * * *'
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:  # Allows manual triggering for testing
 
 jobs:
   send-reports:
@@ -13,61 +13,63 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    
+      
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
-    
+        python-version: '3.11'
+        
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    
-    - name: Set up environment variables
-      env:
-        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
-        SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        SMTP_PORT: ${{ secrets.SMTP_PORT }}
-        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+        
+    - name: Create secrets file
       run: |
-        echo "Environment variables configured"
-    
-    - name: Test email settings
-      env:
-        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
-        SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        SMTP_PORT: ${{ secrets.SMTP_PORT }}
-        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+        mkdir -p .streamlit
+        cat > .streamlit/secrets.toml << EOF
+        SPREADSHEET_ID = "${{ secrets.SPREADSHEET_ID }}"
+        
+        [gcp_service_account]
+        type = "${{ secrets.GCP_TYPE }}"
+        project_id = "${{ secrets.GCP_PROJECT_ID }}"
+        private_key_id = "${{ secrets.GCP_PRIVATE_KEY_ID }}"
+        private_key = """${{ secrets.GCP_PRIVATE_KEY }}"""
+        client_email = "${{ secrets.GCP_CLIENT_EMAIL }}"
+        client_id = "${{ secrets.GCP_CLIENT_ID }}"
+        auth_uri = "${{ secrets.GCP_AUTH_URI }}"
+        token_uri = "${{ secrets.GCP_TOKEN_URI }}"
+        auth_provider_x509_cert_url = "${{ secrets.GCP_AUTH_PROVIDER_X509_CERT_URL }}"
+        client_x509_cert_url = "${{ secrets.GCP_CLIENT_X509_CERT_URL }}"
+        universe_domain = "googleapis.com"
+        EOF
+        
+    - name: Configure email settings
       run: |
-        python standalone_scheduler.py --test
-    
-    - name: Send due reports
-      env:
-        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
-        SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        SMTP_PORT: ${{ secrets.SMTP_PORT }}
-        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+        python << EOF
+        import json
+        import os
+        
+        # Create email settings for the scheduler
+        settings = {
+            "email_settings": {
+                "smtp_server": "${{ secrets.SMTP_SERVER }}",
+                "smtp_port": ${{ secrets.SMTP_PORT }},
+                "use_tls": True,
+                "sender_email": "${{ secrets.SENDER_EMAIL }}",
+                "sender_password": "${{ secrets.SMTP_PASSWORD }}",
+                "sender_name": "${{ secrets.SENDER_NAME }}"
+            }
+        }
+        
+        with open('settings.json', 'w') as f:
+            json.dump(settings, f, indent=2)
+        EOF
+        
+    - name: Check for due reports and send
       run: |
+        echo "🚀 Checking for due reports..."
+        python standalone_scheduler.py --status
+        echo "📧 Running scheduler to send any due reports..."
         python standalone_scheduler.py
-    
-    - name: Show scheduler status
-      env:
-        GOOGLE_SHEETS_CREDENTIALS: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
-        SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-        SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-        SMTP_PORT: ${{ secrets.SMTP_PORT }}
-        SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-        SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-      run: |
-        python standalone_scheduler.py --status 
+        echo "✅ Scheduler run completed" 
