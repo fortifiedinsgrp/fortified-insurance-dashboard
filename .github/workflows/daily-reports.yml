@@ -2,8 +2,8 @@ name: Daily Report Scheduler
 
 on:
   schedule:
-    # Run at 8:00 AM UTC daily (adjust timezone as needed)
-    - cron: '0 8 * * *'
+    # Run at 8:00 AM Eastern Daylight Time (12:00 PM UTC)
+    - cron: '0 12 * * *'
   workflow_dispatch:  # Allows manual triggering for testing
 
 jobs:
