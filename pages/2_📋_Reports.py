@@ -108,11 +108,20 @@ def main():
         # Agency selection
         st.subheader("🏢 Agency Filter")
         try:
-            from utils.google_sheets import get_agency_list
-            agencies = get_agency_list()
-            agency_options = ["All Agencies"] + agencies
+            # Get agencies from agent data (which is what we actually filter on)
+            from utils.google_sheets_fallback import get_sheet_data_with_fallback
+            agent_data = get_sheet_data_with_fallback('Daily Agent Totals')
+            
+            if not agent_data.empty and 'Agency' in agent_data.columns:
+                agencies = sorted(agent_data['Agency'].dropna().unique().tolist())
+                agency_options = ["All Agencies"] + agencies
+            else:
+                # Fallback to standard function if agent data not available
+                from utils.google_sheets import get_agency_list
+                agencies = get_agency_list()
+                agency_options = ["All Agencies"] + agencies
         except:
-            agency_options = ["All Agencies", "Agency A", "Agency B", "Agency C"]
+            agency_options = ["All Agencies", "Bonavita Insurance", "Quality Insurance", "Quality Insurance Agency", "Your Health Group", "Fortified Insurance Solutions"]
         
         selected_agency = st.selectbox(
             "Select Agency",
@@ -154,20 +163,118 @@ def main():
                     else:
                         st.error("Please select a report type")
                     
-                    # Option to download report
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        if st.button("📧 Email Report"):
-                            show_email_dialog(report_html, report_type)
+                    # Always show email and download options when report is generated
+                    st.markdown("---")
                     
-                    with col2:
-                        # Provide HTML download
-                        st.download_button(
-                            label="📥 Download HTML",
-                            data=report_html,
-                            file_name=f"{report_type}_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                            mime="text/html"
-                        )
+                    # Email section
+                    st.subheader("📧 Email This Report")
+                    
+                    # Check email settings first
+                    if not settings_manager.validate_email_settings():
+                        st.error("❌ **Email settings not configured**")
+                        st.markdown("""
+                        **To email reports, configure your email settings:**
+                        1. Go to the **⚙️ Settings** tab above
+                        2. Fill in Gmail configuration and save
+                        3. Test your settings
+                        """)
+                    else:
+                        # Get available users
+                        agency_owners = settings_manager.get_agency_owners()
+                        management_team = settings_manager.get_management_team()
+                        all_users = agency_owners + management_team
+                        email_options = [user.email for user in all_users]
+                        
+                        if not email_options:
+                            st.error("❌ **No users configured**")
+                            st.markdown("""
+                            **To email reports, add users:**
+                            1. Go to the **👥 User Management** tab above
+                            2. Add users with email addresses
+                            """)
+                        else:
+                            # Email form
+                            with st.form("email_report_form", clear_on_submit=True):
+                                email_settings = settings_manager.email_settings
+                                st.info(f"📧 **Sending from:** {email_settings.sender_name} <{email_settings.sender_email}>")
+                                
+                                recipients = st.multiselect(
+                                    "Select Recipients",
+                                    options=email_options,
+                                    default=email_options,
+                                    help="Choose who should receive this report"
+                                )
+                                
+                                custom_subject = st.text_input(
+                                    "Email Subject (Optional)",
+                                    placeholder=f"{report_type.replace('_', ' ').title() if report_type else 'Custom'} Report - {datetime.now().strftime('%Y-%m-%d')}",
+                                    help="Leave blank to use default subject"
+                                )
+                                
+                                send_email = st.form_submit_button("📧 Send Email", type="primary", use_container_width=True)
+                                
+                                if send_email:
+                                    if not recipients:
+                                        st.error("❌ Please select at least one recipient")
+                                    else:
+                                        with st.spinner("Sending email..."):
+                                            try:
+                                                # Create report for email sending
+                                                from utils.scheduler import ScheduledReport
+                                                report_name = custom_subject or f"{report_type.replace('_', ' ').title() if report_type else 'Custom'} Report"
+                                                mock_report = ScheduledReport(
+                                                    id="adhoc",
+                                                    name=report_name,
+                                                    report_type=report_type or "custom",
+                                                    frequency="manual",
+                                                    time="08:00",
+                                                    recipients=recipients
+                                                )
+                                                
+                                                # Send the email
+                                                success = report_scheduler.email_service.send_report(mock_report, report_html)
+                                                
+                                                if success:
+                                                    st.success(f"✅ **Email sent successfully!**")
+                                                    st.balloons()
+                                                    st.markdown(f"""
+                                                    📧 **Details:**
+                                                    - **Recipients:** {', '.join(recipients)}
+                                                    - **Subject:** {mock_report.name}
+                                                    - **Sent:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                                                    
+                                                    Check recipients' inboxes (including spam folder).
+                                                    """)
+                                                else:
+                                                    st.error("❌ **Failed to send email**")
+                                                    st.markdown("""
+                                                    **Troubleshooting:**
+                                                    - Verify email settings in ⚙️ Settings tab
+                                                    - Test email settings first
+                                                    - Check internet connection
+                                                    """)
+                                            
+                                            except Exception as e:
+                                                st.error(f"❌ **Email error:** {str(e)}")
+                                                st.markdown("""
+                                                **This suggests a configuration issue:**
+                                                1. Go to ⚙️ Settings tab
+                                                2. Test your email settings
+                                                3. Verify Gmail app password is correct
+                                                """)
+                    
+                    st.markdown("---")
+                    
+                    # Download section
+                    st.subheader("📥 Download Report")
+                    st.download_button(
+                        label="📥 Download HTML Report",
+                        data=report_html,
+                        file_name=f"{report_type}_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                        mime="text/html",
+                        use_container_width=True,
+                        help="Download this report as an HTML file"
+                    )
                 
                 except Exception as e:
                     st.error(f"Error generating report: {e}")
@@ -644,58 +751,7 @@ def main():
         else:
             st.info("No users configured yet.")
 
-def show_email_dialog(report_html, report_type):
-    """Show email dialog for sending report"""
-    if not settings_manager.validate_email_settings():
-        st.error("Email settings not configured. Please configure email settings first.")
-        return
-    
-    # Get available email addresses
-    agency_owners = settings_manager.get_agency_owners()
-    management_team = settings_manager.get_management_team()
-    all_users = agency_owners + management_team
-    email_options = [user.email for user in all_users]
-    
-    if not email_options:
-        st.error("No users configured for email delivery.")
-        return
-    
-    with st.form("email_report_form"):
-        st.subheader("📧 Email Report")
-        
-        recipients = st.multiselect(
-            "Recipients",
-            options=email_options,
-            default=email_options,
-            help="Select recipients for this report"
-        )
-        
-        custom_subject = st.text_input(
-            "Subject (Optional)",
-            placeholder=f"{report_type.replace('_', ' ').title()} Report - {datetime.now().strftime('%Y-%m-%d')}"
-        )
-        
-        send_email = st.form_submit_button("Send Email")
-        
-        if send_email and recipients:
-            with st.spinner("Sending email..."):
-                # Create a mock scheduled report for email sending
-                from utils.scheduler import ScheduledReport
-                mock_report = ScheduledReport(
-                    id="temp",
-                    name=custom_subject or f"{report_type.replace('_', ' ').title()} Report",
-                    report_type=report_type,
-                    frequency="manual",
-                    time="08:00",
-                    recipients=recipients
-                )
-                
-                success = report_scheduler.email_service.send_report(mock_report, report_html)
-                
-                if success:
-                    st.success(f"Report sent successfully to {len(recipients)} recipients!")
-                else:
-                    st.error("Failed to send email. Please check your email settings.")
+# Removed show_email_dialog function - email interface is now integrated directly into the main report view
 
 if __name__ == "__main__":
     main() 

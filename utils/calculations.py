@@ -22,6 +22,25 @@ def safe_divide(numerator: Union[pd.Series, float], denominator: Union[pd.Series
     else:
         return numerator / denominator if denominator != 0 else 0
 
+def safe_numeric_conversion(series_or_value, fill_value=0):
+    """Safely convert to numeric and handle fillna"""
+    if isinstance(series_or_value, pd.Series):
+        numeric_series = pd.to_numeric(series_or_value, errors='coerce')
+        if isinstance(numeric_series, pd.Series):
+            return numeric_series.fillna(fill_value)
+        else:
+            return numeric_series if not pd.isna(numeric_series) else fill_value
+    else:
+        converted = pd.to_numeric(series_or_value, errors='coerce')
+        return converted if not pd.isna(converted) else fill_value
+
+def safe_sum(series_or_value):
+    """Safely sum a series or return the value"""
+    if hasattr(series_or_value, 'sum'):
+        return series_or_value.sum()
+    else:
+        return series_or_value if not pd.isna(series_or_value) else 0
+
 def calculate_agent_profitability(df: pd.DataFrame) -> pd.DataFrame:
     """Process agent data - using existing calculations from the sheet
     

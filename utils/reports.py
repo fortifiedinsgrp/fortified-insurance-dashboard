@@ -105,7 +105,7 @@ class ReportGenerator:
     def _load_filtered_data(self, sheet_name: str, start_date=None, end_date=None, agency=None) -> pd.DataFrame:
         """Load and filter data from Google Sheets with proper aggregation for date ranges"""
         try:
-            # Try to use fallback system first for reliability
+            # Try to load from Google Sheets first, with fallback to sample data if needed
             from .google_sheets_fallback import get_sheet_data_with_fallback
             data = get_sheet_data_with_fallback(sheet_name)
             
@@ -120,9 +120,16 @@ class ReportGenerator:
         # Apply date filtering if possible
         if start_date and end_date and not data.empty:
             if 'Date' in data.columns:
-                data['Date'] = pd.to_datetime(data['Date'])
-                data = data[(data['Date'] >= pd.to_datetime(start_date)) & 
-                           (data['Date'] <= pd.to_datetime(end_date))]
+                # Convert Date column to datetime if it's not already
+                data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+                
+                # Convert filter dates to datetime for comparison
+                start_dt = pd.to_datetime(start_date) if not isinstance(start_date, pd.Timestamp) else start_date
+                end_dt = pd.to_datetime(end_date) if not isinstance(end_date, pd.Timestamp) else end_date
+                
+                # Filter by date range - use date comparison to handle timezone issues
+                mask = (data['Date'].dt.date >= start_dt.date()) & (data['Date'].dt.date <= end_dt.date())
+                data = data[mask].copy()  # Ensure we return a DataFrame
         
         # Apply agency filtering
         if agency and not data.empty:

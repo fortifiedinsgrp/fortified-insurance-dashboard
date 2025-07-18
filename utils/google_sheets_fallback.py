@@ -9,11 +9,28 @@ from typing import Optional
 import json
 import os
 
-# Sample data for when Google Sheets is unavailable - includes last 7 days
+# Sample data for when Google Sheets is unavailable - includes last 30 days + some historical data
 def _generate_date_range_data():
-    """Generate sample data for the last 7 days"""
-    dates = [(date.today() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
-    agencies = ['Bonavita', 'Quality', 'K and A', 'YHG']
+    """Generate sample data for a broader date range to support historical queries"""
+    # Generate data for last 30 days plus some historical dates for common test scenarios
+    dates = []
+    
+    # Last 30 days from today
+    for i in range(30):
+        dates.append((date.today() - timedelta(days=i)).strftime('%Y-%m-%d'))
+    
+    # Add some common historical test dates
+    historical_dates = [
+        '2024-07-16', '2024-07-15', '2024-07-14', '2024-07-13', '2024-07-12',
+        '2024-06-15', '2024-06-14', '2024-06-13', '2024-06-12', '2024-06-11',
+        '2024-05-15', '2024-05-14', '2024-05-13', '2024-05-12', '2024-05-11'
+    ]
+    dates.extend(historical_dates)
+    
+    # Remove duplicates and sort
+    dates = sorted(list(set(dates)))
+    
+    agencies = ['Bonavita Insurance', 'Quality Insurance', 'Quality Insurance Agency', 'Your Health Group', 'Fortified Insurance Solutions']
     
     data = []
     for d in dates:
@@ -33,13 +50,31 @@ def _generate_date_range_data():
             })
     return data
 
-SAMPLE_AGENCY_DATA = _generate_date_range_data()
+# This will be set after the function is defined
+SAMPLE_AGENCY_DATA = None
 
 def _generate_agent_date_range_data():
-    """Generate sample agent data for the last 7 days"""
-    dates = [(date.today() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+    """Generate sample agent data for a broader date range"""
+    # Use the same date generation logic as agency data
+    dates = []
+    
+    # Last 30 days from today
+    for i in range(30):
+        dates.append((date.today() - timedelta(days=i)).strftime('%Y-%m-%d'))
+    
+    # Add some common historical test dates
+    historical_dates = [
+        '2024-07-16', '2024-07-15', '2024-07-14', '2024-07-13', '2024-07-12',
+        '2024-06-15', '2024-06-14', '2024-06-13', '2024-06-12', '2024-06-11',
+        '2024-05-15', '2024-05-14', '2024-05-13', '2024-05-12', '2024-05-11'
+    ]
+    dates.extend(historical_dates)
+    
+    # Remove duplicates and sort
+    dates = sorted(list(set(dates)))
+    
     agents = ['John Smith', 'Sarah Johnson', 'Mike Wilson', 'Lisa Brown', 'Tom Davis']
-    agencies = ['Bonavita', 'Quality', 'K and A', 'YHG', 'Bonavita']  # Distribute agents across agencies
+    agencies = ['Bonavita Insurance', 'Quality Insurance', 'Quality Insurance Agency', 'Your Health Group', 'Bonavita Insurance']  # Distribute agents across agencies
     
     data = []
     for d in dates:
@@ -61,11 +96,29 @@ def _generate_agent_date_range_data():
             })
     return data
 
-SAMPLE_AGENT_DATA = _generate_agent_date_range_data()
+# This will be set after the function is defined  
+SAMPLE_AGENT_DATA = None
 
 def _generate_vendor_date_range_data():
-    """Generate sample vendor/campaign data for the last 7 days"""
-    dates = [(date.today() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+    """Generate sample vendor/campaign data for a broader date range"""
+    # Use the same date generation logic as agency data
+    dates = []
+    
+    # Last 30 days from today
+    for i in range(30):
+        dates.append((date.today() - timedelta(days=i)).strftime('%Y-%m-%d'))
+    
+    # Add some common historical test dates
+    historical_dates = [
+        '2024-07-16', '2024-07-15', '2024-07-14', '2024-07-13', '2024-07-12',
+        '2024-06-15', '2024-06-14', '2024-06-13', '2024-06-12', '2024-06-11',
+        '2024-05-15', '2024-05-14', '2024-05-13', '2024-05-12', '2024-05-11'
+    ]
+    dates.extend(historical_dates)
+    
+    # Remove duplicates and sort
+    dates = sorted(list(set(dates)))
+    
     campaigns = ['QuoteWizard', 'QuoteLab', 'SmartFinancial', 'LeadGenius', 'InsureMe']
     
     data = []
@@ -86,7 +139,19 @@ def _generate_vendor_date_range_data():
             })
     return data
 
-SAMPLE_VENDOR_DATA = _generate_vendor_date_range_data()
+# This will be set after the function is defined
+SAMPLE_VENDOR_DATA = None
+
+# Initialize sample data after all functions are defined
+def _initialize_sample_data():
+    """Initialize sample data - called at module load"""
+    global SAMPLE_AGENCY_DATA, SAMPLE_AGENT_DATA, SAMPLE_VENDOR_DATA
+    SAMPLE_AGENCY_DATA = _generate_date_range_data()
+    SAMPLE_AGENT_DATA = _generate_agent_date_range_data()
+    SAMPLE_VENDOR_DATA = _generate_vendor_date_range_data()
+
+# Initialize the data
+_initialize_sample_data()
 
 class DataCache:
     """Simple file-based cache for Google Sheets data"""
@@ -157,15 +222,15 @@ def get_fallback_data(sheet_name: str) -> pd.DataFrame:
         st.info(f"📋 Using cached data for '{sheet_name}' (Google Sheets unavailable)")
         return cached_df
     
-    # If no cache, provide sample data
+    # If no cache, generate fresh sample data
     st.warning(f"⚠️ Google Sheets unavailable. Using sample data for '{sheet_name}'")
     
     if 'Agency' in sheet_name or 'Daily Agency' in sheet_name:
-        return pd.DataFrame(SAMPLE_AGENCY_DATA)
+        return pd.DataFrame(_generate_date_range_data())
     elif 'Agent' in sheet_name or 'Daily Agent' in sheet_name:
-        return pd.DataFrame(SAMPLE_AGENT_DATA)
+        return pd.DataFrame(_generate_agent_date_range_data())
     elif 'Vendor' in sheet_name or 'Lead' in sheet_name or 'Daily Lead' in sheet_name:
-        return pd.DataFrame(SAMPLE_VENDOR_DATA)
+        return pd.DataFrame(_generate_vendor_date_range_data())
     else:
         # Generic empty DataFrame
         return pd.DataFrame()
