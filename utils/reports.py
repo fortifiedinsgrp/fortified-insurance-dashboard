@@ -396,21 +396,61 @@ class ReportGenerator:
     def generate_monthly_report(self, **kwargs) -> str:
         """Generate monthly comprehensive report"""
         try:
-            # Load data (using correct sheet names)
-            agency_data = get_sheet_data('Daily Agency Stats')
-            agent_data = get_sheet_data('Daily Agent Totals')
-            vendor_data = get_sheet_data('Daily Lead Vendor Totals')
+            # Extract parameters
+            start_date = kwargs.get('start_date')
+            end_date = kwargs.get('end_date')
+            agency = kwargs.get('agency')
+            user_role = kwargs.get('user_role', 'management')
+            include_campaigns = kwargs.get('include_campaigns', True)
+            
+            # For scheduled reports, use automatic date calculation (previous month)
+            if start_date is None and end_date is None:
+                from datetime import date, timedelta
+                today = date.today()
+                first_of_this_month = today.replace(day=1)
+                last_day_prev_month = first_of_this_month - timedelta(days=1)
+                start_date = last_day_prev_month.replace(day=1)
+                end_date = last_day_prev_month
+            
+            # Load filtered data
+            agency_data = self._load_filtered_data('Daily Agency Stats', start_date, end_date, agency)
+            agent_data = self._load_filtered_data('Daily Agent Totals', start_date, end_date, agency)
+            
+            # Load campaign data only if user has permission
+            vendor_data = pd.DataFrame()
+            if include_campaigns and user_role in ['management', 'admin']:
+                vendor_data = self._load_filtered_data('Daily Lead Vendor Totals', start_date, end_date, agency)
             
             # Calculate metrics
             stats = aggregate_agency_stats(agency_data, agent_data, vendor_data)
             top_agents = get_top_performers(agent_data, n=15)
             at_risk_agents = get_at_risk_agents(agent_data)
-            campaign_performance = get_campaign_performance(vendor_data)
+            campaign_performance = get_campaign_performance(vendor_data) if not vendor_data.empty else pd.DataFrame()
+            
+            # Format report date and agency info
+            if start_date and end_date:
+                if start_date == end_date:
+                    report_period = start_date.strftime("%B %Y") if hasattr(start_date, 'strftime') else str(start_date)
+                else:
+                    start_str = start_date.strftime("%B %d") if hasattr(start_date, 'strftime') else str(start_date)
+                    end_str = end_date.strftime("%B %d, %Y") if hasattr(end_date, 'strftime') else str(end_date)
+                    report_period = f"{start_str} - {end_str}"
+            else:
+                report_period = datetime.now().strftime('%B %Y')
+            
+            agency_info = f" - {agency}" if agency else ""
+            
+            # Role-specific report title
+            role_suffix = ""
+            if user_role == 'agency_owner':
+                role_suffix = " (Agency Report)"
+            elif user_role == 'management':
+                role_suffix = " (Management Report)"
             
             report_html = f"""
             <div style="font-family: Arial, sans-serif;">
-                <h1>Monthly Performance Report</h1>
-                <p><strong>Month:</strong> {datetime.now().strftime('%B %Y')}</p>
+                <h1>Monthly Performance Report{agency_info}{role_suffix}</h1>
+                <p><strong>Period:</strong> {report_period}</p>
                 
                 <h2>Executive Summary</h2>
                 <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
@@ -495,10 +535,17 @@ class ReportGenerator:
     def generate_campaign_analysis_report(self, **kwargs) -> str:
         """Generate detailed campaign analysis"""
         try:
-            vendor_data = get_sheet_data('Daily Lead Vendor Totals')
+            # Extract parameters
+            start_date = kwargs.get('start_date')
+            end_date = kwargs.get('end_date')
+            agency = kwargs.get('agency')
+            user_role = kwargs.get('user_role', 'management')
+            
+            # Load filtered vendor data
+            vendor_data = self._load_filtered_data('Daily Lead Vendor Totals', start_date, end_date, agency)
             
             if vendor_data.empty:
-                return "<p>No campaign data available.</p>"
+                return "<p>No campaign data available for the selected period.</p>"
             
             campaign_performance = calculate_campaign_roas(vendor_data)
             
@@ -506,10 +553,30 @@ class ReportGenerator:
             by_roas = campaign_performance.sort_values('ROAS', ascending=False) if 'ROAS' in campaign_performance.columns else campaign_performance
             by_profit = campaign_performance.sort_values('profit', ascending=False) if 'profit' in campaign_performance.columns else campaign_performance
             
+            # Format report date and agency info
+            if start_date and end_date:
+                if start_date == end_date:
+                    report_period = start_date.strftime("%Y-%m-%d") if hasattr(start_date, 'strftime') else str(start_date)
+                else:
+                    start_str = start_date.strftime("%Y-%m-%d") if hasattr(start_date, 'strftime') else str(start_date)
+                    end_str = end_date.strftime("%Y-%m-%d") if hasattr(end_date, 'strftime') else str(end_date)
+                    report_period = f"{start_str} to {end_str}"
+            else:
+                report_period = datetime.now().strftime('%Y-%m-%d')
+            
+            agency_info = f" - {agency}" if agency else ""
+            
+            # Role-specific report title
+            role_suffix = ""
+            if user_role == 'agency_owner':
+                role_suffix = " (Agency Report)"
+            elif user_role == 'management':
+                role_suffix = " (Management Report)"
+            
             report_html = f"""
             <div style="font-family: Arial, sans-serif;">
-                <h1>Campaign Analysis Report</h1>
-                <p><strong>Report Date:</strong> {datetime.now().strftime('%Y-%m-%d')}</p>
+                <h1>Campaign Analysis Report{agency_info}{role_suffix}</h1>
+                <p><strong>Period:</strong> {report_period}</p>
                 
                 <h2>Top Campaigns by ROAS</h2>
                 {self._format_campaign_table(by_roas.head(10))}
@@ -531,10 +598,27 @@ class ReportGenerator:
     def generate_executive_summary(self, **kwargs) -> str:
         """Generate executive summary report"""
         try:
-            # Load all data (using correct sheet names)
-            agency_data = get_sheet_data('Daily Agency Stats')
-            agent_data = get_sheet_data('Daily Agent Totals')
-            vendor_data = get_sheet_data('Daily Lead Vendor Totals')
+            # Extract parameters
+            start_date = kwargs.get('start_date')
+            end_date = kwargs.get('end_date')
+            agency = kwargs.get('agency')
+            user_role = kwargs.get('user_role', 'management')
+            include_campaigns = kwargs.get('include_campaigns', True)
+            
+            # For scheduled reports, use automatic date calculation
+            if start_date is None and end_date is None:
+                from datetime import date, timedelta
+                yesterday = date.today() - timedelta(days=1)
+                start_date = end_date = yesterday
+            
+            # Load filtered data (same as other reports)
+            agency_data = self._load_filtered_data('Daily Agency Stats', start_date, end_date, agency)
+            agent_data = self._load_filtered_data('Daily Agent Totals', start_date, end_date, agency)
+            
+            # Load campaign data only if user has permission
+            vendor_data = pd.DataFrame()
+            if include_campaigns and user_role in ['management', 'admin']:
+                vendor_data = self._load_filtered_data('Daily Lead Vendor Totals', start_date, end_date, agency)
             
             # Calculate comprehensive stats
             stats = aggregate_agency_stats(agency_data, agent_data, vendor_data)
@@ -544,10 +628,30 @@ class ReportGenerator:
             # Calculate ROI and other key metrics
             roi = ((stats['totalRevenue'] - stats['totalLeadSpend']) / stats['totalLeadSpend'] * 100) if stats['totalLeadSpend'] > 0 else 0
             
+            # Format report date and agency info
+            if start_date:
+                if start_date == end_date:
+                    report_period = start_date.strftime("%Y-%m-%d") if hasattr(start_date, 'strftime') else str(start_date)
+                else:
+                    start_str = start_date.strftime("%Y-%m-%d") if hasattr(start_date, 'strftime') else str(start_date)
+                    end_str = end_date.strftime("%Y-%m-%d") if hasattr(end_date, 'strftime') else str(end_date)
+                    report_period = f"{start_str} to {end_str}"
+            else:
+                report_period = datetime.now().strftime('%Y-%m-%d')
+            
+            agency_info = f" - {agency}" if agency else ""
+            
+            # Role-specific report title
+            role_suffix = ""
+            if user_role == 'agency_owner':
+                role_suffix = " (Agency Report)"
+            elif user_role == 'management':
+                role_suffix = " (Management Report)"
+            
             report_html = f"""
             <div style="font-family: Arial, sans-serif;">
-                <h1>Executive Summary</h1>
-                <p><strong>Period:</strong> {datetime.now().strftime('%Y-%m-%d')}</p>
+                <h1>Executive Summary{agency_info}{role_suffix}</h1>
+                <p><strong>Period:</strong> {report_period}</p>
                 
                 <h2>Key Performance Indicators</h2>
                 <div style="display: flex; flex-wrap: wrap; gap: 20px; margin: 20px 0;">
