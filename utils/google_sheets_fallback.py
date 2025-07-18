@@ -9,40 +9,84 @@ from typing import Optional
 import json
 import os
 
-# Sample data for when Google Sheets is unavailable
-SAMPLE_AGENCY_DATA = {
-    'Date': [date.today().strftime('%Y-%m-%d')] * 3,
-    'Agency': ['Agency A', 'Agency B', 'Agency C'],
-    'FE': [15000, 12000, 18000],
-    'Adroit': [8000, 6000, 9000],
-    'Total Rev': [23000, 18000, 27000],
-    'QW': [2500, 2000, 3000],
-    'QS': [1800, 1500, 2200],
-    'SF': [2200, 1800, 2500],
-    'Total Leads': [6500, 5300, 7700]
-}
+# Sample data for when Google Sheets is unavailable - includes last 7 days
+def _generate_date_range_data():
+    """Generate sample data for the last 7 days"""
+    dates = [(date.today() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+    agencies = ['Bonavita', 'Quality', 'K and A', 'YHG']
+    
+    data = []
+    for d in dates:
+        for agency in agencies:
+            # Vary data slightly by date and agency
+            base_multiplier = 0.8 + (hash(d + agency) % 40) / 100  # 0.8 to 1.2
+            data.append({
+                'Date': d,
+                'Agency': agency,
+                'FE': int(15000 * base_multiplier),
+                'Adroit': int(8000 * base_multiplier),
+                'Total Rev': int(23000 * base_multiplier),
+                'QW': int(2500 * base_multiplier),
+                'QS': int(1800 * base_multiplier),
+                'SF': int(2200 * base_multiplier),
+                'Total Leads': int(6500 * base_multiplier)
+            })
+    return data
 
-SAMPLE_AGENT_DATA = {
-    'Agent Name': ['John Smith', 'Sarah Johnson', 'Mike Wilson', 'Lisa Brown', 'Tom Davis'],
-    'Sales': [15, 12, 18, 8, 22],
-    'Revenue': [45000, 36000, 54000, 24000, 66000],
-    'Count Paid Calls': [125, 110, 140, 95, 155],
-    'Agent Profitability': [2500, 1800, 2700, 900, 3100],
-    'Closing Ratio': [12.0, 10.9, 12.9, 8.4, 14.2],
-    'Total Calls': [180, 165, 195, 145, 220],
-    'Lead Spend': [2500, 2200, 2800, 1900, 3100]
-}
+SAMPLE_AGENCY_DATA = _generate_date_range_data()
 
-SAMPLE_VENDOR_DATA = {
-    'Campaign': ['QuoteWizard', 'QuoteLab', 'SmartFinancial', 'LeadGenius', 'InsureMe'],
-    'Paid Calls': [450, 380, 520, 290, 410],
-    '# Unique Sales': [54, 42, 67, 29, 51],
-    'Revenue': [162000, 126000, 201000, 87000, 153000],
-    'Lead Cost': [9000, 7600, 10400, 5800, 8200],
-    'ROAS': [18.0, 16.6, 19.3, 15.0, 18.7],
-    'Profit': [153000, 118400, 190600, 81200, 144800],
-    '% Closing Ratio': [12.0, 11.1, 12.9, 10.0, 12.4]
-}
+def _generate_agent_date_range_data():
+    """Generate sample agent data for the last 7 days"""
+    dates = [(date.today() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+    agents = ['John Smith', 'Sarah Johnson', 'Mike Wilson', 'Lisa Brown', 'Tom Davis']
+    agencies = ['Bonavita', 'Quality', 'K and A', 'YHG', 'Bonavita']  # Distribute agents across agencies
+    
+    data = []
+    for d in dates:
+        for i, agent in enumerate(agents):
+            # Vary data slightly by date and agent
+            base_multiplier = 0.7 + (hash(d + agent) % 60) / 100  # 0.7 to 1.3
+            data.append({
+                'Date': d,
+                'Agent Name': agent,
+                'Agency': agencies[i],
+                'Sales': max(1, int(15 * base_multiplier)),
+                'Revenue': int(45000 * base_multiplier),
+                'Count Paid Calls': int(125 * base_multiplier),
+                'Agent Profitability': int(2500 * base_multiplier),
+                'Closing Ratio': round(12.0 * base_multiplier, 2),
+                'Total Calls': int(200 * base_multiplier),
+                'Lead Spend': int(1800 * base_multiplier),
+                'Profit': int(2500 * base_multiplier)
+            })
+    return data
+
+SAMPLE_AGENT_DATA = _generate_agent_date_range_data()
+
+def _generate_vendor_date_range_data():
+    """Generate sample vendor/campaign data for the last 7 days"""
+    dates = [(date.today() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+    campaigns = ['QuoteWizard', 'QuoteLab', 'SmartFinancial', 'LeadGenius', 'InsureMe']
+    
+    data = []
+    for d in dates:
+        for campaign in campaigns:
+            # Vary data slightly by date and campaign
+            base_multiplier = 0.8 + (hash(d + campaign) % 40) / 100  # 0.8 to 1.2
+            data.append({
+                'Date': d,
+                'Campaign': campaign,
+                'Paid Calls': int(450 * base_multiplier),
+                '# Unique Sales': int(54 * base_multiplier),
+                'Revenue': int(162000 * base_multiplier),
+                'Lead Cost': int(9000 * base_multiplier),
+                'ROAS': round(18.0 * base_multiplier, 2),
+                'Profit': int(153000 * base_multiplier),
+                '% Closing Ratio': round(12.0 * base_multiplier, 2)
+            })
+    return data
+
+SAMPLE_VENDOR_DATA = _generate_vendor_date_range_data()
 
 class DataCache:
     """Simple file-based cache for Google Sheets data"""

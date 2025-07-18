@@ -319,34 +319,37 @@ def main():
     with tab3:
         st.header("Report Scheduling")
         
-        # GitHub Sync Status
+        # GitHub Sync Status (Optional)
         try:
             from utils.github_sync import github_sync
             
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                if github_sync.is_configured():
-                    is_connected, message = github_sync.test_connection()
-                    if is_connected:
-                        st.success(f"🔗 GitHub Sync: Connected - {message}")
-                    else:
-                        st.error(f"❌ GitHub Sync: {message}")
-                else:
-                    st.warning("⚠️ GitHub Sync: Not configured. Scheduled reports won't sync between Streamlit and GitHub Actions.")
-                    st.info("📖 See GITHUB_TOKEN_SETUP.md for setup instructions")
-            
-            with col2:
-                if st.button("🔄 Test GitHub Connection"):
+            with st.expander("🔗 GitHub Sync Status (Optional)", expanded=False):
+                col1, col2 = st.columns([3, 1])
+                with col1:
                     if github_sync.is_configured():
                         is_connected, message = github_sync.test_connection()
                         if is_connected:
-                            st.success("✅ Connection successful!")
+                            st.success(f"Connected - {message}")
                         else:
-                            st.error(f"❌ {message}")
+                            st.error(f"Connection failed: {message}")
                     else:
-                        st.error("❌ GitHub token not configured")
+                        st.info("GitHub sync allows automatic synchronization between Streamlit and GitHub Actions.")
+                        st.info("See GITHUB_TOKEN_SETUP.md for setup instructions")
+                
+                with col2:
+                    if st.button("🔄 Test Connection"):
+                        if github_sync.is_configured():
+                            is_connected, message = github_sync.test_connection()
+                            if is_connected:
+                                st.success("✅ Connection successful!")
+                            else:
+                                st.error(f"❌ {message}")
+                        else:
+                            st.error("❌ GitHub token not configured")
+        except ImportError:
+            st.info("📝 GitHub sync module not available (this is normal)")
         except Exception as e:
-            st.error(f"Error checking GitHub sync: {e}")
+            st.warning(f"GitHub sync temporarily unavailable: {e}")
         
         st.divider()
         
