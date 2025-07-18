@@ -88,6 +88,66 @@ jobs:
         print("✅ Email settings configured successfully")
         EOF
         
+    - name: Create scheduled reports configuration
+      run: |
+        echo "🚀 Creating scheduled reports configuration..."
+        python << 'EOF'
+        import json
+        from datetime import datetime
+        
+        # Create scheduled reports that match what user configured on Streamlit Cloud
+        scheduled_reports = {
+            "scheduled_reports": [
+                {
+                    "id": "daily_executive_summary",
+                    "name": "Daily Executive Summary",
+                    "report_type": "executive_summary",
+                    "frequency": "daily",
+                    "time": "08:00",
+                    "recipients": ["msinger@fortifiedinsgrp.com"],
+                    "enabled": True,
+                    "next_run": None
+                },
+                {
+                    "id": "daily_performance_report",
+                    "name": "Daily Performance Report",
+                    "report_type": "daily_performance",
+                    "frequency": "daily", 
+                    "time": "08:00",
+                    "recipients": ["msinger@fortifiedinsgrp.com"],
+                    "enabled": True,
+                    "next_run": None
+                },
+                {
+                    "id": "weekly_summary",
+                    "name": "Weekly Summary Report",
+                    "report_type": "weekly_aggregated",
+                    "frequency": "weekly",
+                    "time": "08:00", 
+                    "recipients": ["msinger@fortifiedinsgrp.com"],
+                    "enabled": True,
+                    "next_run": None
+                },
+                {
+                    "id": "monthly_comprehensive",
+                    "name": "Monthly Comprehensive Report", 
+                    "report_type": "monthly_comprehensive",
+                    "frequency": "monthly",
+                    "time": "08:00",
+                    "recipients": ["msinger@fortifiedinsgrp.com"],
+                    "enabled": True,
+                    "next_run": None
+                }
+            ],
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        with open('schedules.json', 'w') as f:
+            json.dump(scheduled_reports, f, indent=2)
+        
+        print("✅ Created schedules.json with 4 scheduled reports")
+        EOF
+
     - name: Check for due reports and send
       run: |
         echo "🚀 Checking for due reports..."
