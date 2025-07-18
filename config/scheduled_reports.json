@@ -1,0 +1,53 @@
+{
+  "scheduled_reports": [
+    {
+      "id": "bonavita_daily_report",
+      "name": "Bonavita Daily Report",
+      "report_type": "executive_summary",
+      "frequency": "daily",
+      "time": "08:00",
+      "recipients": ["msinger@fortifiedinsgrp.com"],
+      "enabled": true,
+      "agency_filter": "Bonavita",
+      "user_role": "agency_owner",
+      "next_run": null
+    },
+    {
+      "id": "quality_daily_report", 
+      "name": "Quality Daily Report",
+      "report_type": "executive_summary",
+      "frequency": "daily",
+      "time": "08:00",
+      "recipients": ["msinger@fortifiedinsgrp.com"],
+      "enabled": true,
+      "agency_filter": "Quality",
+      "user_role": "agency_owner",
+      "next_run": null
+    },
+    {
+      "id": "ka_daily_report",
+      "name": "K and A Daily Report", 
+      "report_type": "executive_summary",
+      "frequency": "daily",
+      "time": "08:00",
+      "recipients": ["msinger@fortifiedinsgrp.com"],
+      "enabled": true,
+      "agency_filter": "K and A",
+      "user_role": "agency_owner",
+      "next_run": null
+    },
+    {
+      "id": "management_daily_report",
+      "name": "Management Daily Report",
+      "report_type": "executive_summary", 
+      "frequency": "daily",
+      "time": "08:00",
+      "recipients": ["msinger@fortifiedinsgrp.com"],
+      "enabled": true,
+      "agency_filter": null,
+      "user_role": "management",
+      "next_run": null
+    }
+  ],
+  "last_updated": "2025-01-18T08:00:00.000000"
+} 

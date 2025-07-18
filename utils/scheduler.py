@@ -194,7 +194,7 @@ class EmailService:
 class ReportScheduler:
     """Report scheduler for managing automated reports"""
     
-    def __init__(self, schedules_file: str = "schedules.json"):
+    def __init__(self, schedules_file: str = "config/scheduled_reports.json"):
         self.schedules_file = schedules_file
         self.scheduled_reports: List[ScheduledReport] = []
         self.email_service = EmailService()
