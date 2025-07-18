@@ -68,7 +68,7 @@ class SettingsManager:
         self.load_settings()
     
     def load_settings(self):
-        """Load settings from JSON file"""
+        """Load settings from JSON file, environment variables, and Streamlit secrets"""
         if os.path.exists(self.settings_file):
             try:
                 with open(self.settings_file, 'r') as f:
@@ -91,10 +91,62 @@ class SettingsManager:
                     self.app_settings = AppSettings(**data['app_settings'])
                     
             except Exception as e:
-                print(f"Error loading settings: {e}")
-                self._create_default_settings()
-        else:
-            self._create_default_settings()
+                print(f"Error loading settings file: {e}")
+        
+        # Override email settings with environment variables (for GitHub Actions)
+        self._load_email_from_env()
+        
+        # Override email settings with Streamlit secrets (for Streamlit Cloud)
+        self._load_email_from_streamlit_secrets()
+    
+    def _load_email_from_env(self):
+        """Load email settings from environment variables"""
+        import os
+        
+        if os.getenv('SMTP_SERVER'):
+            self.email_settings.smtp_server = os.getenv('SMTP_SERVER', self.email_settings.smtp_server)
+        
+        if os.getenv('SMTP_PORT'):
+            self.email_settings.smtp_port = int(os.getenv('SMTP_PORT', self.email_settings.smtp_port))
+        
+        if os.getenv('SMTP_USERNAME'):
+            self.email_settings.sender_email = os.getenv('SMTP_USERNAME', self.email_settings.sender_email)
+        
+        if os.getenv('SMTP_PASSWORD'):
+            self.email_settings.sender_password = os.getenv('SMTP_PASSWORD', self.email_settings.sender_password)
+        
+        if os.getenv('SENDER_EMAIL'):
+            self.email_settings.sender_email = os.getenv('SENDER_EMAIL', self.email_settings.sender_email)
+    
+    def _load_email_from_streamlit_secrets(self):
+        """Load email settings from Streamlit secrets"""
+        try:
+            import streamlit as st
+            
+            # Check if we're in a Streamlit context
+            if hasattr(st, 'secrets'):
+                # Load from email section in secrets
+                if 'email' in st.secrets:
+                    email_secrets = st.secrets['email']
+                    
+                    if 'smtp_server' in email_secrets:
+                        self.email_settings.smtp_server = email_secrets['smtp_server']
+                    
+                    if 'smtp_port' in email_secrets:
+                        self.email_settings.smtp_port = int(email_secrets['smtp_port'])
+                    
+                    if 'smtp_username' in email_secrets:
+                        self.email_settings.sender_email = email_secrets['smtp_username']
+                    
+                    if 'smtp_password' in email_secrets:
+                        self.email_settings.sender_password = email_secrets['smtp_password']
+                    
+                    if 'sender_email' in email_secrets:
+                        self.email_settings.sender_email = email_secrets['sender_email']
+                
+        except Exception:
+            # Not in Streamlit context or secrets not available
+            pass
     
     def save_settings(self):
         """Save settings to JSON file"""
@@ -205,11 +257,13 @@ class SettingsManager:
         return self.save_settings()
     
     def validate_email_settings(self) -> bool:
-        """Validate email settings are complete"""
+        """Validate that email settings are properly configured"""
         return (
+            bool(self.email_settings.smtp_server) and
+            bool(self.email_settings.smtp_port) and
             bool(self.email_settings.sender_email) and
             bool(self.email_settings.sender_password) and
-            bool(self.email_settings.smtp_server)
+            '@' in self.email_settings.sender_email
         )
     
     def get_settings_summary(self) -> Dict:
